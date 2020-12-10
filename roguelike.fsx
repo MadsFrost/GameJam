@@ -32,36 +32,15 @@ let normalize (A:vec) : vec =
     (fst A / int(len), snd A / int(len))
  
 let defaultSym = ('.', color.Black, color.DarkGreen)
- 
-[<AbstractClassAttribute>]
-type Entity (pos : vec, look : (char*color)) =
-    let mutable pos : vec = pos
-    let mutable look : (char*color) = look
-    let mutable solid = true
- 
-    member val Pos = pos with get, set
-    member val Look = look with get, set
-    member val Solid = solid with get, set
- 
-    member this.Move (dir : vec) = 
-        pos <- pos ++ dir
- 
-    abstract member TakeTurn : unit -> unit
- 
+
 type Canvas(width:int, height:int) = 
-    let width = width;
-    let height = height;
     let mutable chars : symbol array = Array.init (width*height) (fun x -> defaultSym)
+    
+    member val Chars = chars with get, set
+    member this.Width = width;
+    member this.Height = height;
     member this.Set (point : vec, s : symbol) : unit = 
         chars.[(snd point) * width + (fst point)] <- s
- 
-    member this.SetEntity (ent : Entity) : unit = 
-        let i = (snd ent.Pos) * width + (fst ent.Pos)
- 
-        let (_,_,bgCol) = chars.[i]
- 
-        chars.[i] <- (fst ent.Look, snd ent.Look, bgCol)
- 
  
     member this.Show () : unit = 
         Console.Clear()
@@ -75,19 +54,35 @@ type Canvas(width:int, height:int) =
                 Console.Write("\n")
             else ()
  
+[<AbstractClassAttribute>] 
+type Entity (pos : vec, look : (char*color)) =
+    let mutable pos : vec = pos
+    let mutable look : (char*color) = look
  
+    member val Pos = pos with get, set
+    member val Look = look with get, set
  
+    member this.Move (dir : vec) = 
+        pos <- pos ++ dir
+    member this.RenderOn (c: Canvas) = 
+        let i = (snd this.Pos) * c.Width + (fst this.Pos)
  
-let c = new Canvas (10,10)
+        let (_,_,bgCol) = c.Chars.[i]
+ 
+        c.Chars.[i] <- (fst this.Look, snd this.Look, bgCol)
 // let snabelA = ('@', color.Red, color.DarkBlue)
 // c.Set((4,4), snabelA)
 // c.Show()
  
- 
-type Player (pos : vec, look : (char*color)) =
- 
-    inherit Entity (pos, look)
- 
+ [<AbstractClassAttribute>] 
+type Actor (HP: int, pos : vec, look : (char*color)) =
+    inherit Entity(pos, look)
+    let mutable hp = HP
+    abstract member TakeTurn : unit -> unit
+
+type Player (pos : vec) =
+    inherit Actor (10, pos, ('@', color.Blue))
+    
     member this.KeyMove () = 
         let k = Console.ReadKey(true)
         match k.Key with
@@ -101,33 +96,27 @@ type Player (pos : vec, look : (char*color)) =
         this.KeyMove()
         ()
  
+[<AbstractClassAttribute>] 
+type Item (solid: true, pos : vec, look : (char*color)) =
+    inherit Entity(pos, look)
+    member this.Solid : bool = solid;
+    abstract member InteractWith : unit -> unit
  
-// type Item (pos : vec, look : (char*color)) =
-    //inherit Entity (pos, look)
+let p1 = new Player(o)
  
- 
-let p1 = new Player(o, ('1', color.Red))
- 
- 
-let entities : Entity list = [p1]
- 
+let actors : Actor list = [p1]
+let c = new Canvas (10,10)
 let gameRunning : bool = true;
  
 while (gameRunning) do
- 
- 
- 
+
     //Draw background
- 
- 
- 
     //Draw entities
+    for i in [0..(actors.Length-1)] do
  
-    for i in [0..(entities.Length-1)] do
+        let act = actors.[i]
  
-        let ent = entities.[i]
- 
-        c.SetEntity(ent)
+        act.RenderOn(c)
  
     c.Show()
  
