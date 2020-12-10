@@ -100,14 +100,33 @@ type Player (pos : vec) =
 type Item (solid: true, pos : vec, look : (char*color)) =
     inherit Entity(pos, look)
     member this.Solid : bool = solid;
-    abstract member InteractWith : unit -> unit
+    abstract member InteractWith : Actor -> unit
  
+ 
+
+type Wall (pos : vec) =
+    inherit Item(true, pos, ('█', color.Gray))
+
+    override this.InteractWith () = 
+
+
+
+
+
+
+
+
+
+
+
+
+
 let p1 = new Player(o)
  
 let actors : Actor list = [p1]
 let c = new Canvas (10,10)
 let gameRunning : bool = true;
- 
+
 while (gameRunning) do
 
     //Draw background
