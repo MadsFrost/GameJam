@@ -1,7 +1,5 @@
 module roguelike
-
 open System
-
  
 type vec = int * int
 type color = System.ConsoleColor
@@ -43,8 +41,8 @@ let normalize (A: vec): vec =
     let ys = if snd A <> 0 then sign (snd A) else 0
     (xs, ys)
  
-let defaultSym1 = ("░░", color.DarkGray, None)
-let defaultSym2 = ("  ", color.DarkGray, None)
+let defaultSym1 = ("░░", color.DarkGray, Some color.Black)
+let defaultSym2 = ("  ", color.DarkGray, Some color.Black)
  
 ///<summary>Creates a string which is assigned int duplicaitons of character</summary>
 ///<param name="c: char, amount:int">C defines which character to iterate over and amount is number of loops</param>
@@ -145,7 +143,7 @@ type Canvas(size : vec, position : vec, layer : int) =
             this.Chars.[i] <- if x % 2 = y % 2 then defaultSym1 else defaultSym2
  
 type CanvasRenderer (size : vec, cList : Canvas list) =
-    member val Chars: symbol array = Array.init (fst size * snd size) (fun _ -> ("  ", color.Black, None)) with get, set
+    member val Chars: symbol array = Array.init (fst size * snd size) (fun _ -> ("  ", color.Black, Some color.DarkGray)) with get, set
     member val canvasList = cList with get, set
     member val size = size with get, set
     member this.Width = fst size
@@ -155,7 +153,7 @@ type CanvasRenderer (size : vec, cList : Canvas list) =
  
     member this.Show() =
  
-        this.Chars <- Array.init (fst size * snd size) (fun _ -> ("  ", color.Black, None))
+        this.Chars <- Array.init (fst size * snd size) (fun _ -> ("  ", color.Black, Some color.Black))
  
         ///<summary> transforms from index of canvas to screenSpace position </summary>
         let indexToPos (i : int) (c : Canvas) : vec option =
@@ -164,9 +162,9 @@ type CanvasRenderer (size : vec, cList : Canvas list) =
                 else 
                     let pos = (i % c.Width, i / c.Width)
                     Some (pos ++ c.position)
- 
- 
- 
+        ///<summary>Checks pos on on canvas</summary>
+        ///<param name ="pos, c">The position in vector form and canvas</param>
+        ///<returns>An integer option</returns>
         let posToIndexOn (pos : vec) (c:Canvas)  : int option =
             let transformedPos = pos
             if ((fst transformedPos) < 0
@@ -178,7 +176,9 @@ type CanvasRenderer (size : vec, cList : Canvas list) =
                 let i = (fst transformedPos + snd transformedPos * c.Width)
                 Some i
  
- 
+        ///<summary>Checks position to a certain index</summary>
+        ///<param name ="pos">The position in vector form</param>
+        ///<returns>An integer option</returns>
         let posToThisIndex (pos : vec)  : int option =
             let transformedPos = pos
             if ((fst transformedPos) < 0
@@ -190,7 +190,7 @@ type CanvasRenderer (size : vec, cList : Canvas list) =
                 let i = (fst transformedPos + snd transformedPos * this.Width)
                 Some i
  
- 
+
         let sortedList = List.sortBy (fun (c:Canvas) -> c.Layer) this.canvasList
         for c in sortedList do
             match c.renderSection with
@@ -205,7 +205,7 @@ type CanvasRenderer (size : vec, cList : Canvas list) =
                             let (    _, c_fgc, c_bgc) = this.Chars.[screenSpaceIndex]
                             let (e_str, e_fgc, e_bgc) = c.Chars.[i]
  
-                            let pixel = (e_str, e_fgc, match e_bgc with | None -> Some c_fgc | Some c -> Some c)
+                            let pixel = (e_str, e_fgc, match e_bgc with | None -> c_bgc | Some c -> e_bgc)
                             this.Chars.[screenSpaceIndex] <- pixel
  
             | Area (TL, BR) -> 
@@ -221,13 +221,15 @@ type CanvasRenderer (size : vec, cList : Canvas list) =
                     match posToThisIndex screenSpacePoint  with
                         | None -> ()
                         | Some screenSpaceIndex -> 
-                            let (    _, c_fgc, c_bgc) = this.Chars.[screenSpaceIndex]
+                            let (c_str, c_fgc, c_bgc) = this.Chars.[screenSpaceIndex]
  
                             let (e_str, e_fgc, e_bgc)  = match canvasIndex with 
                                                             | None -> ("  ", color.Black, Some color.Black)
                                                             | Some canvasI -> c.Chars.[canvasI]
  
-                            let pixel = (e_str, e_fgc, match e_bgc with | None -> Some c_fgc | Some c -> Some c)
+                            let pixel = (e_str, e_fgc, match e_bgc with | None -> c_bgc | Some c -> e_bgc)
+ 
+                            //if e_str = "  " then pixel <- (c_str, color.Gray, Some color.DarkGray) else ()
                             this.Chars.[screenSpaceIndex] <- pixel
                 ()
  
@@ -300,17 +302,17 @@ and World (c : Canvas, player : Playable, canvasRenderer : CanvasRenderer) =
         for ent : Entity in this.EntityList do
             ent.RenderOn this.worldCanvas this.showEntityInfo
  
-        let healthSpot = (-player.Status().Length/4, +6)
+        let healthSpot = (-player.Status().Length/4 - 1, -7)
         this.worldCanvas.Spell (player.Status()) (player.Pos++healthSpot) (color.Red, None)
  
- 
+    ///<summary>Renders the world</summary>
     member this.RenderWorld() : unit = 
+ 
         this.Update()
         this.canvasRenderer.Show()
- 
- 
- 
+    ///<summary>Performs the turns in the game</summary>
     member this.PerformGameLoop () =
+ 
         //while we have turns left
             while (List.filter (fun (act : Actor) -> act.TurnsLeft > 0) this.ActorList <> []) do
  
@@ -341,43 +343,61 @@ and GameWorld(size : vec, canvasRenderer : CanvasRenderer, player : Adventurer) 
  
         let lines = System.IO.File.ReadAllLines("worldMap.txt")
  
+        this.AddActor(this.Player)
+ 
         for y in [0.. lines.Length-1] do
             for x in [0.. lines.[y].Length-1] do
                 match lines.[y].[x] with
                             | '#' -> this.AddItem(Wall ((x,y)))
                             | 'A' -> this.AddActor(Archer ((x,y)))
+                            | 'B' -> this.AddActor(Brute  ((x,y)))
                             | 'P' -> player.Pos <- (x,y);
                                      let renderSize = (-7,-7)
                                      this.worldCanvas.renderSection <- Area (player.Pos ++ renderSize, player.Pos +- renderSize)
                             | 'H' -> this.AddItem(HealthPotion ((x,y)))
+                            | 'W' -> this.AddItem(Water ((x,y)))
+                            | '!' -> this.AddItem(Fire ((x,y)))
                             | 'F' -> this.AddItem(FleshEatingPlant ((x,y)))
                             | ':' -> this.AddItem(WeakWall ((x,y)))
+                            | 'S' -> this.AddItem(Secret ((x,y)))
+                            | 'X' -> this.AddItem <| Exit ((x,y), ("[]",color.DarkYellow, Some color.Black))
                             | _ -> ()
  
                 ()
  
-        this.AddActor(this.Player)
  
  
-        // this.AddItemLine<Wall>(o, rt, 15)                   //top wall
-        // this.AddItemLine<Wall>(o, dn, 10)                       //left
-        // this.AddItemLine<Wall>(dn +* 9, rt, 15)                 //bottom
-        // this.AddItemLine<Wall>(rt +* 14, dn, 3)                 //right top
-        // this.AddItemLine<Wall>(rt +* 14 ++ (dn +* 4), dn, 6)   //right bottom
-        // this.AddItem(WeakWall(rt +* 14 ++ (dn +* 3)))
-        // this.AddItem(FleshEatingPlant ((15,7)))
-        // this.AddItem(HealthPotion ((15, 1)))
-        // this.AddItem(HealthPotion ((9, 2)))
-        // this.AddActor(Archer((7, 8)))
-        // this.AddActor(Archer((13, 2)))
+    override this.Quit() =
+ 
+ 
+        let renderSize = (-7,-7)
+        this.worldCanvas.renderSection <- Area (player.Pos ++ renderSize, player.Pos +- renderSize)
+        let textPos = player.Pos ++ (-7, -4)
+        let col = (color.Gray, Some color.Black)
+        this.worldCanvas.Reset()
+        this.worldCanvas.Spell ("ESCAPE") (textPos++rt++rt++rt++rt++rt++up++up) (color.DarkGreen, Some color.Black)
+        this.worldCanvas.Spell (" You've escaped the prison") textPos col
+        this.worldCanvas.Spell (sprintf " with %i of your health left" player.HP) (textPos++dn) col
+ 
+        this.worldCanvas.Spell ("Remaining hiding archers") (textPos++(dn +* 3)++rt) col
+        this.worldCanvas.Spell ("run to the exit, but you") (textPos++(dn +* 4)++rt) col
+        this.worldCanvas.Spell (" swiftly lock the door. ") (textPos++(dn +* 5)++rt) col
+ 
+        this.worldCanvas.Spell (" Did you find all of the") (textPos++(dn +* 7)++rt) col
+        this.worldCanvas.Spell ("secrets?") (textPos++(dn +* 8)++(rt +* 5)) (color.DarkCyan, Some color.Black)
+ 
+        this.canvasRenderer.Show()
+ 
+        System.Threading.Thread.Sleep(System.Threading.Timeout.Infinite)
  
  
 and Game () =
-    let renderer = new CanvasRenderer((25,25),[])
-    let inventory = new Inventory((25,25), renderer)
-    let player = new Adventurer ((5,5), inventory)
+    let renderer = new CanvasRenderer((20,13),[])
+    let inventory = new Inventory((20,13), renderer)
+    let player = new Adventurer (o, inventory)
     let gameWorld = new GameWorld((90,30), renderer, player)
     let mutable gameOver = false
+    ///<summary>Renders the game on a canvas and loops the game turns until game over</summary>
     member this.Play () = 
         renderer.canvasList <- [gameWorld.worldCanvas; inventory.worldCanvas]
         gameWorld.Init()
@@ -393,7 +413,7 @@ and InventoryScreen (size:vec, position:vec, layer: int) =
  
     override this.Reset () : unit =
  
-        this.Chars <- Array.init (this.Width*this.Height) (fun _ -> ("  ", color.Black, None))
+        this.Chars <- Array.init (this.Width*this.Height) (fun _ -> ("__", color.DarkGray, Some color.DarkGray))
  
         let boxPos = (3,5)
         let topL = (0,1) ++ boxPos
@@ -442,7 +462,7 @@ and Inventory(size:vec, canvasRenderer : CanvasRenderer) =
         this.AddItemLine<Barrier> (botL, rt, fst (topR +- topL))
         this.AddItemLine<Barrier> (topR, dn, snd (botL +- topL))
  
-        this.AddItem(new WorldExit (topR ++ dn ++ lt, (" X", color.Red, None)))
+        this.AddItem(new Exit (topR ++ dn ++ lt, (" X", color.Red, None)))
  
         this.Player.Pos <- topR ++ dn ++ lt
         this.AddActor(this.Player)
@@ -457,7 +477,7 @@ and Inventory(size:vec, canvasRenderer : CanvasRenderer) =
         this.worldCanvas.Reset()
         base.Update()
  
-    ///<summary>Renders the world canvas</summary>
+    ///<summary>Opens the canvas and starts the game</summary>
     member this.Open () =
         this.isOpen <- true
         this.worldCanvas.renderSection <- All
@@ -469,6 +489,8 @@ and Inventory(size:vec, canvasRenderer : CanvasRenderer) =
  
     override this.Quit () = 
         this.isOpen <- false
+        this.RenderWorld (); 
+        System.Threading.Thread.Sleep(500);
  
  
  
@@ -496,7 +518,9 @@ and [<AbstractClassAttribute>] Entity(pos: vec, look: symbol, solid: bool) =
         if this.isDeleted then 
             () 
         else this.ReactTo a;
- 
+    ///<summary>Checks pos on on canvas</summary>
+    ///<param name ="pos, c">The position and canvas</param>
+    ///<returns>An integer option</returns>
     member this.AttemptInspect (a : Actor) : string =
         if this.isDeleted then 
             "" 
@@ -540,6 +564,9 @@ and [<AbstractClassAttribute>] Entity(pos: vec, look: symbol, solid: bool) =
  
 and [<AbstractClassAttribute>] Actor(HP: int, pos: vec, look: symbol, ?world : World, ?speed : int, ?solid : bool) =
     inherit Entity(pos, look, match solid with | None -> true | Some b -> b)
+ 
+ 
+ 
     let mutable hp = HP
  
     member this.HP
@@ -549,11 +576,14 @@ and [<AbstractClassAttribute>] Actor(HP: int, pos: vec, look: symbol, ?world : W
                 hp <- 0
                 this.onDeath ()
             else
-                hp <- v
+                if v >= 15 then
+                    hp <- 15
+                else 
+                    hp <- v
  
     member val world = world with get, set
  
-    member val DMG = 1 with get, set
+    member val DMG = 5 with get, set
  
     member val isDead = false with get, set
  
@@ -628,13 +658,13 @@ and [<AbstractClassAttribute>] Actor(HP: int, pos: vec, look: symbol, ?world : W
  
  
 and Playable(pos: vec, look : symbol) =
-    inherit Actor(3, pos, look, speed = 1)
+    inherit Actor(10, pos, look, speed = 2)
  
     ///<summary>Shows the status bar below the game rendering</summary>
     ///<returns>A string consisting of the players health points</returns>
     abstract Status : unit -> string
     default this.Status(): string =
-        sprintf "[HP:%-9s]" (repeatString " <3" this.HP)
+        sprintf "[HP:%-5s]" (repeatString "*" this.HP)
  
 and Adventurer (pos: vec, inv : Inventory) =
     inherit Playable(pos, ("O>", color.White, None))
@@ -682,9 +712,34 @@ and Adventurer (pos: vec, inv : Inventory) =
         w.AddActor(arrow)
         arrow.TakeTurn w
  
- 
+    ///<summary>Opens the player inventory</summary>
     member private this.EnterInventory () =
         this.inventory.Open()
+ 
+    override this.onDeath () =
+        let textPos = this.Pos ++ (-6, -5)
+        let col = (color.Gray, Some color.Black)
+        match this.world with
+            | None -> ()
+            | Some w ->
+                let renderSize = (-8,-7)
+                w.worldCanvas.renderSection <- Area (this.Pos ++ renderSize, this.Pos +- renderSize)
+                w.worldCanvas.Reset()
+                w.worldCanvas.Spell ("DEFEAT") (textPos++(rt +* 5)++up++up) (color.DarkRed, Some color.Black)
+                w.worldCanvas.Spell ("You have succumbed to") (textPos++rt) col
+                w.worldCanvas.Spell ("your numerous wounds.") (textPos++dn++rt) col
+ 
+                w.worldCanvas.Spell ("As the light fades from") (textPos++(dn +* 3)++rt) col
+                w.worldCanvas.Spell ("your eyes, all you can") (textPos++(dn +* 4)++rt) col
+                w.worldCanvas.Spell ("think of is your family,") (textPos++(dn +* 5)++rt) col
+                w.worldCanvas.Spell ("and how they will never") (textPos++(dn +* 6)++rt) col
+                w.worldCanvas.Spell ("get to know what happened.") (textPos++(dn +* 7)++rt) col
+ 
+                w.worldCanvas.Spell ("Try again? -> Restart") (textPos++(dn +* 9)++rt) col
+                w.worldCanvas.Spell ("Tread carefully") (textPos++(dn +* 10)++(rt +* 3)) (color.DarkCyan, Some color.Black)
+                w.canvasRenderer.Show()
+ 
+        System.Threading.Thread.Sleep(System.Threading.Timeout.Infinite)
  
 and InvMarker (pos: vec) =
     inherit Playable(pos, ("  ", color.Black, Some color.DarkGray))
@@ -789,14 +844,42 @@ and Monster(HP: int, pos: vec, look: symbol) =
         else 
             this.aggressive <- false
  
+ 
+and Brute(pos: vec) =
+    inherit Monster(10, pos, ("█-", color.DarkMagenta, None))
+    let mutable lookDir : vec  = (-1,0)
+ 
+    ///<summary>The figure of the character</summary>
+    member private this.Body : string = "█" 
+    new() = Brute(randomVec () +* randN 0 10)
+ 
+ 
+    override this.TakeTurn(w: World) =
+ 
+        base.TakeTurn(w)
+ 
+        if this.aggressive then
+ 
+            let dir: vec = normalize (w.Player.Pos +- this.Pos)
+ 
+            this.Move (dir) w 
+            let dirIndicator : string = if fst dir > 0 then ">" 
+                                            else if fst dir < 0 then "<" 
+                                                else if snd dir > 0 then "v" 
+                                                    else "^"
+            lookDir <- dir
+            this.Look <- if fst lookDir = -1 then (dirIndicator + this.Body, snd3 this.Look, None) else (this.Body + dirIndicator, snd3 this.Look, None)
+ 
+        else
+            ()
+ 
 and Archer(pos: vec) =
-    inherit Monster(2, pos, ("█>", color.DarkMagenta, None))
+    inherit Monster(5, pos, ("A}", color.DarkMagenta, None))
     let mutable innerClock = randN 0 1
     let mutable lookDir : vec  = (-1,0)
     ///<summary>The figure of the character</summary>
-    member private this.Body : string = "█" 
+    member private this.Body : string = "A" 
     new() = Archer(randomVec () +* randN 0 10)
- 
  
     override this.TakeTurn(w: World) =
  
@@ -805,25 +888,24 @@ and Archer(pos: vec) =
         if this.aggressive then
             innerClock <- innerClock + 1
             let dir: vec = normalize (w.Player.Pos +- this.Pos)
-            if innerClock % 2 = 0 then
+            if true then //innerClock % 2 = 0
                 lookDir <- dir
                 let arrow = FlyingArrow(this.Pos, lookDir, color.DarkMagenta)
-                arrow.MaxTurns <- 1
+                arrow.MaxTurns <- 2
                 w.AddActor(arrow)
                 arrow.TakeTurn w
+                arrow.TurnsLeft <- 1
  
             else
-                this.Move (dir) w 
-                let dirIndicator : string = if fst dir > 0 then ">" 
-                                                else if fst dir < 0 then "<" 
-                                                    else if snd dir > 0 then "v" 
-                                                        else "^"
-                lookDir <- dir
-                this.Look <- if fst lookDir = -1 then (dirIndicator + this.Body, snd3 this.Look, None) else (this.Body + dirIndicator, snd3 this.Look, None)
+            ()
+                // this.Move (dir) w 
+                // let dirIndicator : string = if fst dir > 0 then "}" 
+                //                                 else if fst dir < 0 then "{" else "}"
+ 
+                // lookDir <- dir
+                // this.Look <- if fst lookDir = -1 then (dirIndicator + this.Body, snd3 this.Look, None) else (this.Body + dirIndicator, snd3 this.Look, None)
  
         else
-            // let dir: vec = randomVec ()
-            // this.Move (dir) w
             ()
  
  
@@ -833,18 +915,25 @@ and Archer(pos: vec) =
 and [<AbstractClassAttribute>] Item(pos: vec, look: symbol, solid: bool) =
     inherit Entity(pos, look, solid)
  
-and InfinityArrow (pos : vec) =
-    inherit Item (pos, ("=> ", color.Green, None), false)
-    new() = InfinityArrow(randomVec () +* randN 0 10)
+and Fire(pos: vec) =
+    inherit Item(pos, (match randN 0 1 with
+                                | 0 -> ("/\\", color.Red, Some color.Black)
+                                | 1 -> ("/\\", color.DarkRed, Some color.Black)
+                                | _ -> (":D", color.Red, Some color.Black)
+                      ), false)
+    let mutable fireLeft = 5
+    let damage = 1
+    new() = Fire(randomVec () +* randN 0 10)
+    override this.ReactTo(a: Actor) = 
+            a.HP <- a.HP - damage
+            a.Look <- (fst3 a.Look, color.Red, third3 a.Look)
+            fireLeft <- fireLeft - 1
+            if fireLeft < 1 then
+                this.isDeleted <- true
+            else 
+                ()
  
-    override this.ReactTo (a : Actor) = 
- 
-        this.isDeleted <- true
- 
-    override this.GetDataLook () = ("1A", color.Black, Some color.Green)
- 
-    override this.Inspect (a : Actor) =
-        "Infinity Arrow"
+    override this.GetDataLook () = (sprintf "-%i" damage, color.Black, Some (snd3 this.Look))
  
 and FleshEatingPlant(pos: vec) =
     inherit Item(pos, (match randN 0 3 with
@@ -853,23 +942,33 @@ and FleshEatingPlant(pos: vec) =
                             | 2 -> "<>"
                             | 3 -> "^v"
                             | _ -> ":D"
-                            , color.DarkRed, Some color.DarkGreen), false)
-    let damage = 1 
+                            , color.DarkGreen, None), false)
+    let damage = 5 
     new() = FleshEatingPlant(randomVec () +* randN 0 10)
     override this.ReactTo(a: Actor) =
             a.HP <- a.HP - damage
  
-    override this.GetDataLook () = (sprintf "-%i" damage , color.Black, third3 this.Look)
+    override this.GetDataLook () = (sprintf "-%i" damage , color.Black, Some (snd3 this.Look))
  
 and HealthPotion(pos: vec) =
     inherit Item(pos, ("<3", color.Red, None), false)
-    let healAmount = 1
+    let healAmount = 5
     new() = HealthPotion(randomVec () +* randN 0 10)
     override this.ReactTo(a: Actor) = 
-            a.HP <- a.HP + 1
+            a.HP <- a.HP + healAmount
             this.isDeleted <- true
  
     override this.GetDataLook () = (sprintf "+%i" healAmount , color.Black, Some (snd3 this.Look))
+ 
+and Water(pos: vec) =
+    inherit Item(pos, ("~~", color.Black, Some color.DarkCyan), false)
+    let healAmount = 2
+    new() = Water(randomVec () +* randN 0 10)
+    override this.ReactTo(a: Actor) = 
+            a.HP <- a.HP + healAmount
+            this.isDeleted <- true
+ 
+    override this.GetDataLook () = (sprintf "+%i" healAmount , color.Black, third3 this.Look)
  
 and Wall(pos: vec) =
     inherit Item(pos, ("▓▓", color.Gray, None), true)
@@ -880,14 +979,14 @@ and WeakWall(pos:vec) =
     new() = WeakWall(randomVec () +* randN 0 10)
  
     override this.ReactTo(a: Actor) =
-            printfn "<!>"
-            printfn "The old wall crumbles from the impact"
             this.isDeleted <- true
-            printf "> continue "
-            ignore <| Console.ReadKey(true)
+            // printfn "<!>"
+            // printfn "The old wall crumbles from the impact"
+            // printf "> continue "
+            // ignore <| Console.ReadKey(true)
             ()
  
-and WorldExit (pos : vec, look : symbol) =
+and Exit (pos : vec, look : symbol) =
     inherit Item(pos, look, false)
  
  
@@ -898,12 +997,38 @@ and WorldExit (pos : vec, look : symbol) =
             this.Quit(a)
             ""
  
- 
+    ///<summary>Quits the game</summary>
+    ///<param name ="a">An actor</param>
     member this.Quit (a:Actor) : unit =
         match a.world with
-            | None -> failwith "Error: WorldExit couldn't quit world because world was None"
-            | Some w -> w.RenderWorld (); System.Threading.Thread.Sleep(500); w.Quit()
-                        a.TurnsLeft <- 0
+            | None -> failwith "Error: Exit couldn't quit world because world was None"
+            | Some w -> 
+                        if a.HP < 5 then
+ 
+                            let renderSize = (-7,-7)
+                            w.worldCanvas.renderSection <- Area (a.Pos ++ renderSize, a.Pos +- renderSize)
+                            let textPos = a.Pos ++ (-7, -4)
+                            let col = (color.Gray, Some color.Black)
+                            w.worldCanvas.Reset()
+                            w.worldCanvas.Spell ("TOO WEAK") (textPos++rt++rt++rt++rt++rt++up++up) (color.DarkRed, Some color.Black)
+                            w.worldCanvas.Spell ("You reach the door, but") (textPos++rt) col
+                            w.worldCanvas.Spell (sprintf "with only %i health left" a.HP) (textPos++dn++rt) col
+ 
+                            w.worldCanvas.Spell ("Less than 5 makes you too") (textPos++(dn +* 3)++rt) col
+                            w.worldCanvas.Spell ("weak. The door is stuck.") (textPos++(dn +* 4)++rt) col
+ 
+                            w.worldCanvas.Spell ("An arrow whizzes into") (textPos++(dn +* 6)++rt) col
+                            w.worldCanvas.Spell ("your aching back.") (textPos++(dn +* 7)++rt) col
+ 
+                            w.worldCanvas.Spell ("You die.") (textPos++(dn +* 8 )++rt) col
+                            w.worldCanvas.Spell ("Explore for health!") (textPos++(dn +* 9)++(rt +* 2)) (color.DarkCyan, Some color.Black)
+ 
+                            w.canvasRenderer.Show()
+ 
+                            System.Threading.Thread.Sleep(System.Threading.Timeout.Infinite)
+                        else
+                            w.Quit()
+                            a.TurnsLeft <- 0
         ()
  
  
@@ -911,6 +1036,26 @@ and Barrier (pos : vec) =
     inherit Item (pos, ("  ", color.Black, None), true)
     new () = new Barrier(o)
     override this.RenderOn (_ : Canvas) (_ : bool) = ()
+ 
+and Secret(pos: vec) =
+    inherit Item(pos, ("$$", color.DarkCyan, None), false)
+    new() = Secret(randomVec () +* randN 0 10)
+    override this.ReactTo(a: Actor) = 
+ 
+            match a.world with
+             | None -> ()
+             | Some w -> 
+                         w.Update()
+                         w.worldCanvas.Spell "Secret found" (this.Pos++up++lt++lt++lt) (snd3 this.Look, Some color.Black)
+                         w.canvasRenderer.Show()
+                         ignore <| Console.ReadKey(true)
+                         w.RenderWorld()
+ 
+            this.isDeleted <- true
+ 
+ 
+    override this.GetDataLook () = ("ST", color.Black, Some (snd3 this.Look))
+ 
  
 //INVENTORY ITEMS
  
@@ -927,5 +1072,15 @@ and TutorialPaper (pos : vec, text : string) =
     override this.Inspect (a:Actor) : string =
         text
  
-let game = new Game()
-game.Play()
+and InfinityArrow (pos : vec) =
+    inherit Item (pos, ("=> ", color.Green, None), false)
+    new() = InfinityArrow(randomVec () +* randN 0 10)
+ 
+    override this.ReactTo (a : Actor) = 
+ 
+        this.isDeleted <- true
+ 
+    override this.GetDataLook () = ("1A", color.Black, Some color.Green)
+ 
+    override this.Inspect (a : Actor) =
+        "Infinity Arrow"
