@@ -2,14 +2,20 @@
 ## Documentation
 The library includes game functions as well as a standardized and scalable way to implement new expansions and features.
 
-### worldMap.txt
+### Map Builder - worldMap.txt
 The worldMap txt file includes a premade map, which can be modifed and thereafter rendered when running the game. It makes for an easier generation of maps. The different pieces involved in the map are:
 
 1. P - which is the player
 2. F - flesh eating plants
 3. A - Archers
 4. H - health potions
-5. \# - Walls
+5. B - Brute
+6. W - Water
+7. ! - Fire
+8. : - Weak Wall
+9. S - Secret
+10. X - Exit
+11. \# - Walls
 
 ### Controls on keyboard
 #### Movement
@@ -44,10 +50,10 @@ Entire example:
     game.Play()
 
 4. Lastly you need to compile the application as seen below.
-## Compiling the application
+## Compiling the game
 To compile the application we make use of the commands:
 
-Compiling simulate.fs to an DLL-library
+Compiling roguelike-lib.fs to an DLL-library
 
 ```fsharpc -a roguelike-lib.fs```
 
@@ -58,10 +64,10 @@ If you have an .fsx file you want to start the first line by utilizing the modul
 
 ```module roguelike```
 
-thereafter you can compile the library simulate.dll with your .fsx file as such:
+thereafter you can compile the library roguelike-lib.dll with your .fsx file as such:
 
 ```fsharpc -r roguelike-lib.dll roguelike.fsx```
-## Running the application
+## Running the game
 After compiling you can run your application by typing:
 
 ```mono roguelike.exe```
